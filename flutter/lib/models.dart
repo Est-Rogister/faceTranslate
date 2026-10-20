@@ -48,6 +48,13 @@ class LanguageOption {
       englishName: 'Spanish',
     ),
   ];
+
+  static LanguageOption? fromCode(String? code) {
+    for (final language in values) {
+      if (language.code == code) return language;
+    }
+    return null;
+  }
 }
 
 class SpeechSample {

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 import '../models.dart';
+import '../services/conversation_history_store.dart';
 import '../services/live_translate_service.dart';
 import '../services/live_translate_settings.dart';
 import 'conversation_screen.dart';
@@ -15,12 +18,14 @@ class HomeShell extends StatefulWidget {
     this.translationClientFactory,
     this.audioPlayerFactory,
     this.settings,
+    this.historyStore,
     super.key,
   });
 
   final TranslationClientFactory? translationClientFactory;
   final TranslationAudioPlayerFactory? audioPlayerFactory;
   final LiveTranslateSettings? settings;
+  final ConversationHistoryStore? historyStore;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -29,6 +34,8 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   late final LiveTranslateSettings _settings =
       widget.settings ?? LiveTranslateSettings.instance;
+  late final ConversationHistoryStore _historyStore =
+      widget.historyStore ?? FileConversationHistoryStore();
   LanguageOption _languageA = LanguageOption.chinese;
   LanguageOption _languageB = LanguageOption.english;
   _MicrophonePermission _permission = _MicrophonePermission.prompt;
@@ -36,6 +43,48 @@ class _HomeShellState extends State<HomeShell> {
   String? _entryError;
   List<TranscriptMessage> _messagesA = const [];
   List<TranscriptMessage> _messagesB = const [];
+  int _historyRevision = 0;
+  bool _historySaveWarningShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restoreHistory());
+  }
+
+  Future<void> _restoreHistory() async {
+    final history = await _historyStore.load();
+    if (!mounted || _historyRevision != 0) return;
+    setState(() {
+      _languageA = history.languageA;
+      _languageB = history.languageB;
+      _messagesA = history.messagesA;
+      _messagesB = history.messagesB;
+    });
+  }
+
+  ConversationHistorySnapshot get _historySnapshot =>
+      ConversationHistorySnapshot(
+        languageA: _languageA,
+        languageB: _languageB,
+        messagesA: _messagesA,
+        messagesB: _messagesB,
+      );
+
+  void _historyChanged() {
+    _historyRevision++;
+    unawaited(_persistHistory(_historySnapshot));
+  }
+
+  Future<void> _persistHistory(ConversationHistorySnapshot snapshot) async {
+    try {
+      await _historyStore.save(snapshot);
+    } catch (_) {
+      if (!mounted || _historySaveWarningShown) return;
+      _historySaveWarningShown = true;
+      _showToast('翻译记录保存失败');
+    }
+  }
 
   Future<void> _requestStart() async {
     if (widget.translationClientFactory == null && !_settings.isConfigured) {
@@ -161,6 +210,7 @@ class _HomeShellState extends State<HomeShell> {
       _languageB = languageB;
       _entryError = null;
     });
+    _historyChanged();
   }
 
   void _addMessage(PartySide target, TranscriptMessage message) {
@@ -171,6 +221,7 @@ class _HomeShellState extends State<HomeShell> {
         _messagesB = [..._messagesB, message];
       }
     });
+    _historyChanged();
   }
 
   void _clearMessages() {
@@ -178,6 +229,7 @@ class _HomeShellState extends State<HomeShell> {
       _messagesA = const [];
       _messagesB = const [];
     });
+    _historyChanged();
   }
 
   @override

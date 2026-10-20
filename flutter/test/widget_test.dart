@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:facetranslate/app.dart';
 import 'package:facetranslate/models.dart';
+import 'package:facetranslate/services/conversation_history_store.dart';
 import 'package:facetranslate/services/live_translate_service.dart';
 import 'package:facetranslate/services/live_translate_settings.dart';
 import 'package:flutter/material.dart';
@@ -107,6 +108,7 @@ void main() {
           return _FakeTranslationClient();
         },
         audioPlayerFactory: _FakeAudioPlayer.new,
+        historyStore: _MemoryHistoryStore(),
       ),
     );
     await tester.tap(find.text('开始对话'));
@@ -191,14 +193,132 @@ void main() {
     expect(dropdownA.value, LanguageOption.english);
     expect(dropdownB.value, LanguageOption.chinese);
   });
+
+  testWidgets('restores translation history after the app restarts', (
+    tester,
+  ) async {
+    final historyStore = _MemoryHistoryStore(
+      ConversationHistorySnapshot(
+        languageA: LanguageOption.chinese,
+        languageB: LanguageOption.values[3],
+        messagesA: const [],
+        messagesB: [
+          TranscriptMessage(
+            source: '你好，很高兴认识你。',
+            translation: '안녕하세요, 만나서 반가워요.',
+            sourceLanguage: LanguageOption.chinese,
+            targetLanguage: LanguageOption.values[3],
+            createdAt: DateTime(2026, 10, 14, 10, 30),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpWidget(_buildTestApp(historyStore: historyStore));
+    await tester.pump();
+
+    await tester.tap(find.text('开始对话'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('允许'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('你好，很高兴认识你。'), findsOneWidget);
+    expect(find.text('안녕하세요, 만나서 반가워요.'), findsOneWidget);
+  });
+
+  testWidgets('saves a completed translation immediately', (tester) async {
+    final historyStore = _MemoryHistoryStore();
+    await tester.pumpWidget(_buildTestApp(historyStore: historyStore));
+    await tester.tap(find.text('开始对话'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('允许'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final microphone = find.byKey(const ValueKey('microphone-b'));
+    final gesture = await tester.startGesture(tester.getCenter(microphone));
+    await tester.pump(const Duration(milliseconds: 1100));
+    await gesture.up();
+    await tester.pump();
+
+    expect(historyStore.snapshot.messagesA, hasLength(1));
+    expect(
+      historyStore.snapshot.messagesA.single.translation,
+      'Excuse me, how do I get to the nearest subway station?',
+    );
+  });
+
+  testWidgets('dragging the divider keeps a microphone in the collapsed side', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.tap(find.text('开始对话'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('允许'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final panelA = find.byKey(const ValueKey('party-panel-a'));
+    final panelB = find.byKey(const ValueKey('party-panel-b'));
+    final initialPanelAHeight = tester.getSize(panelA).height;
+
+    await tester.drag(
+      find.byKey(const ValueKey('conversation-divider-handle')),
+      const Offset(0, 400),
+    );
+    await tester.pump();
+
+    expect(tester.getSize(panelA).height, greaterThan(initialPanelAHeight));
+    expect(tester.getSize(panelB).height, closeTo(108, 0.1));
+    expect(find.byKey(const ValueKey('microphone-b')), findsOneWidget);
+    expect(find.byKey(const ValueKey('party-feed-b')), findsNothing);
+    expect(find.byKey(const ValueKey('conversation-language-b')), findsNothing);
+  });
+
+  testWidgets('switches to compact mode before the panel can overflow', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.tap(find.text('开始对话'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('允许'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.drag(
+      find.byKey(const ValueKey('conversation-divider-handle')),
+      const Offset(0, 80),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('microphone-b')), findsOneWidget);
+    expect(find.byKey(const ValueKey('party-feed-b')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }
 
-Widget _buildTestApp({LiveTranslateSettings? settings}) {
+Widget _buildTestApp({
+  LiveTranslateSettings? settings,
+  ConversationHistoryStore? historyStore,
+}) {
   return FaceTranslateApp(
     translationClientFactory: _FakeTranslationClient.new,
     audioPlayerFactory: _FakeAudioPlayer.new,
     settings: settings,
+    historyStore: historyStore ?? _MemoryHistoryStore(),
   );
+}
+
+class _MemoryHistoryStore implements ConversationHistoryStore {
+  _MemoryHistoryStore([
+    this.snapshot = const ConversationHistorySnapshot.empty(),
+  ]);
+
+  ConversationHistorySnapshot snapshot;
+
+  @override
+  Future<ConversationHistorySnapshot> load() async => snapshot;
+
+  @override
+  Future<void> save(ConversationHistorySnapshot snapshot) async {
+    this.snapshot = snapshot;
+  }
 }
 
 class _MemorySettingsStore implements LiveTranslateSettingsStore {

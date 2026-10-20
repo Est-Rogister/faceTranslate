@@ -51,6 +51,10 @@ class ConversationScreen extends StatefulWidget {
 
 class _ConversationScreenState extends State<ConversationScreen>
     with SingleTickerProviderStateMixin {
+  static const _centerConsoleHeight = 54.0;
+  static const _minimumPanelHeight = 108.0;
+  static const _compactPanelThreshold = 240.0;
+
   late LanguageOption _languageA = widget.languageA;
   late LanguageOption _languageB = widget.languageB;
   late final AnimationController _motionController;
@@ -75,6 +79,7 @@ class _ConversationScreenState extends State<ConversationScreen>
   PartySide? _liveTargetSide;
   String _liveSourceText = '';
   String _liveTranslationText = '';
+  double _panelAFraction = 0.5;
 
   @override
   void initState() {
@@ -517,68 +522,106 @@ class _ConversationScreenState extends State<ConversationScreen>
     };
   }
 
+  void _resizePanels(double deltaY, double availableHeight) {
+    if (availableHeight <= _minimumPanelHeight * 2) return;
+    final currentHeight = availableHeight * _panelAFraction;
+    final nextHeight = (currentHeight + deltaY).clamp(
+      _minimumPanelHeight,
+      availableHeight - _minimumPanelHeight,
+    );
+    setState(() => _panelAFraction = nextHeight / availableHeight);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return SafeArea(
       child: ColoredBox(
         color: theme.scaffoldBackgroundColor,
-        child: Column(
-          children: [
-            Expanded(
-              child: Transform.rotate(
-                angle: math.pi,
-                child: _PartyPanel(
-                  side: PartySide.a,
-                  language: _languageA,
-                  messages: _messagesFor(PartySide.a),
-                  liveMessage: _liveMessageFor(PartySide.a),
-                  scrollController: _feedAController,
-                  recording: _recordingSide == PartySide.a,
-                  canceling: _recordingSide == PartySide.a && _cancelArmed,
-                  conflicted: _conflictSide == PartySide.a,
-                  disabled: _microphonesDisabled,
-                  motion: _motionController,
-                  statusText: _localizedStatus(PartySide.a),
-                  status: _status,
-                  statusColor: _statusColor(context),
-                  onLanguageChanged: (language) =>
-                      _selectLanguage(PartySide.a, language),
-                  onPointerDown: (event) => _beginRecording(PartySide.a, event),
-                  onPointerMove: (event) => _trackRecording(PartySide.a, event),
-                  onPointerEnd: (event) => _endRecording(PartySide.a, event),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final availableHeight = math.max(
+              0.0,
+              constraints.maxHeight - _centerConsoleHeight,
+            );
+            final minimumHeight = math.min(
+              _minimumPanelHeight,
+              availableHeight / 2,
+            );
+            final panelAHeight = (availableHeight * _panelAFraction)
+                .clamp(minimumHeight, availableHeight - minimumHeight)
+                .toDouble();
+            final panelBHeight = availableHeight - panelAHeight;
+            return Column(
+              children: [
+                SizedBox(
+                  key: const ValueKey('party-panel-a'),
+                  height: panelAHeight,
+                  child: Transform.rotate(
+                    angle: math.pi,
+                    child: _PartyPanel(
+                      side: PartySide.a,
+                      compact: panelAHeight < _compactPanelThreshold,
+                      language: _languageA,
+                      messages: _messagesFor(PartySide.a),
+                      liveMessage: _liveMessageFor(PartySide.a),
+                      scrollController: _feedAController,
+                      recording: _recordingSide == PartySide.a,
+                      canceling: _recordingSide == PartySide.a && _cancelArmed,
+                      conflicted: _conflictSide == PartySide.a,
+                      disabled: _microphonesDisabled,
+                      motion: _motionController,
+                      statusText: _localizedStatus(PartySide.a),
+                      status: _status,
+                      statusColor: _statusColor(context),
+                      onLanguageChanged: (language) =>
+                          _selectLanguage(PartySide.a, language),
+                      onPointerDown: (event) =>
+                          _beginRecording(PartySide.a, event),
+                      onPointerMove: (event) =>
+                          _trackRecording(PartySide.a, event),
+                      onPointerEnd: (event) =>
+                          _endRecording(PartySide.a, event),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            _CenterConsole(
-              disabled: _busy || _recordingSide != null,
-              onSwap: _swapLanguages,
-              onEdit: _editLanguages,
-              onClear: _clearMessages,
-            ),
-            Expanded(
-              child: _PartyPanel(
-                side: PartySide.b,
-                language: _languageB,
-                messages: _messagesFor(PartySide.b),
-                liveMessage: _liveMessageFor(PartySide.b),
-                scrollController: _feedBController,
-                recording: _recordingSide == PartySide.b,
-                canceling: _recordingSide == PartySide.b && _cancelArmed,
-                conflicted: _conflictSide == PartySide.b,
-                disabled: _microphonesDisabled,
-                motion: _motionController,
-                statusText: _localizedStatus(PartySide.b),
-                status: _status,
-                statusColor: _statusColor(context),
-                onLanguageChanged: (language) =>
-                    _selectLanguage(PartySide.b, language),
-                onPointerDown: (event) => _beginRecording(PartySide.b, event),
-                onPointerMove: (event) => _trackRecording(PartySide.b, event),
-                onPointerEnd: (event) => _endRecording(PartySide.b, event),
-              ),
-            ),
-          ],
+                _CenterConsole(
+                  disabled: _busy || _recordingSide != null,
+                  onDrag: (deltaY) => _resizePanels(deltaY, availableHeight),
+                  onSwap: _swapLanguages,
+                  onEdit: _editLanguages,
+                  onClear: _clearMessages,
+                ),
+                SizedBox(
+                  key: const ValueKey('party-panel-b'),
+                  height: panelBHeight,
+                  child: _PartyPanel(
+                    side: PartySide.b,
+                    compact: panelBHeight < _compactPanelThreshold,
+                    language: _languageB,
+                    messages: _messagesFor(PartySide.b),
+                    liveMessage: _liveMessageFor(PartySide.b),
+                    scrollController: _feedBController,
+                    recording: _recordingSide == PartySide.b,
+                    canceling: _recordingSide == PartySide.b && _cancelArmed,
+                    conflicted: _conflictSide == PartySide.b,
+                    disabled: _microphonesDisabled,
+                    motion: _motionController,
+                    statusText: _localizedStatus(PartySide.b),
+                    status: _status,
+                    statusColor: _statusColor(context),
+                    onLanguageChanged: (language) =>
+                        _selectLanguage(PartySide.b, language),
+                    onPointerDown: (event) =>
+                        _beginRecording(PartySide.b, event),
+                    onPointerMove: (event) =>
+                        _trackRecording(PartySide.b, event),
+                    onPointerEnd: (event) => _endRecording(PartySide.b, event),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -588,6 +631,7 @@ class _ConversationScreenState extends State<ConversationScreen>
 class _PartyPanel extends StatelessWidget {
   const _PartyPanel({
     required this.side,
+    required this.compact,
     required this.language,
     required this.messages,
     required this.liveMessage,
@@ -607,6 +651,7 @@ class _PartyPanel extends StatelessWidget {
   });
 
   final PartySide side;
+  final bool compact;
   final LanguageOption language;
   final List<TranscriptMessage> messages;
   final TranscriptMessage? liveMessage;
@@ -631,66 +676,74 @@ class _PartyPanel extends StatelessWidget {
     final accent = side == PartySide.a
         ? theme.colorScheme.primary
         : AppTone.success(context);
+    final microphone = _MicrophoneButton(
+      key: ValueKey('microphone-${side.name}'),
+      accent: accent,
+      recording: recording,
+      canceling: canceling,
+      conflicted: conflicted,
+      disabled: disabled,
+      motion: motion,
+      onPointerDown: onPointerDown,
+      onPointerMove: onPointerMove,
+      onPointerEnd: onPointerEnd,
+    );
 
     return ColoredBox(
       color: theme.colorScheme.surface,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
-        child: Column(
-          children: [
-            Expanded(
-              child: messages.isEmpty && liveMessage == null
-                  ? _EmptyFeed(isChinese: isChinese)
-                  : ListView.separated(
-                      controller: scrollController,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount:
-                          messages.length + (liveMessage == null ? 0 : 1),
-                      separatorBuilder: (_, _) =>
-                          Divider(height: 24, color: theme.colorScheme.outline),
-                      itemBuilder: (context, index) {
-                        if (index < messages.length) {
-                          return _MessageCard(message: messages[index]);
-                        }
-                        return _MessageCard(
-                          message: liveMessage!,
-                          isLive: true,
-                        );
-                      },
+        padding: compact
+            ? const EdgeInsets.symmetric(horizontal: 20, vertical: 12)
+            : const EdgeInsets.fromLTRB(20, 12, 20, 10),
+        child: compact
+            ? Center(child: microphone)
+            : Column(
+                children: [
+                  Expanded(
+                    key: ValueKey('party-feed-${side.name}'),
+                    child: messages.isEmpty && liveMessage == null
+                        ? _EmptyFeed(isChinese: isChinese)
+                        : ListView.separated(
+                            controller: scrollController,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            itemCount:
+                                messages.length + (liveMessage == null ? 0 : 1),
+                            separatorBuilder: (_, _) => Divider(
+                              height: 24,
+                              color: theme.colorScheme.outline,
+                            ),
+                            itemBuilder: (context, index) {
+                              if (index < messages.length) {
+                                return _MessageCard(message: messages[index]);
+                              }
+                              return _MessageCard(
+                                message: liveMessage!,
+                                isLive: true,
+                              );
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: 10),
+                  microphone,
+                  const SizedBox(height: 5),
+                  _CompactLanguageDropdown(
+                    key: ValueKey('conversation-language-${side.name}'),
+                    value: language,
+                    enabled: !disabled,
+                    onChanged: onLanguageChanged,
+                  ),
+                  const SizedBox(height: 5),
+                  SizedBox(
+                    height: 20,
+                    child: _StatusLabel(
+                      text: statusText,
+                      status: status,
+                      color: statusColor,
+                      motion: motion,
                     ),
-            ),
-            const SizedBox(height: 10),
-            _MicrophoneButton(
-              key: ValueKey('microphone-${side.name}'),
-              accent: accent,
-              recording: recording,
-              canceling: canceling,
-              conflicted: conflicted,
-              disabled: disabled,
-              motion: motion,
-              onPointerDown: onPointerDown,
-              onPointerMove: onPointerMove,
-              onPointerEnd: onPointerEnd,
-            ),
-            const SizedBox(height: 5),
-            _CompactLanguageDropdown(
-              key: ValueKey('conversation-language-${side.name}'),
-              value: language,
-              enabled: !disabled,
-              onChanged: onLanguageChanged,
-            ),
-            const SizedBox(height: 5),
-            SizedBox(
-              height: 20,
-              child: _StatusLabel(
-                text: statusText,
-                status: status,
-                color: statusColor,
-                motion: motion,
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -989,12 +1042,14 @@ class _MicrophoneButton extends StatelessWidget {
 class _CenterConsole extends StatelessWidget {
   const _CenterConsole({
     required this.disabled,
+    required this.onDrag,
     required this.onSwap,
     required this.onEdit,
     required this.onClear,
   });
 
   final bool disabled;
+  final ValueChanged<double> onDrag;
   final VoidCallback onSwap;
   final VoidCallback onEdit;
   final VoidCallback onClear;
@@ -1014,6 +1069,24 @@ class _CenterConsole extends StatelessWidget {
       child: Row(
         children: [
           const Spacer(),
+          Tooltip(
+            message: '拖动调整双方区域',
+            child: GestureDetector(
+              key: const ValueKey('conversation-divider-handle'),
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragUpdate: (details) => onDrag(details.delta.dy),
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(
+                  Icons.drag_handle_rounded,
+                  size: 24,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 2),
           _ConsoleButton(
             tooltip: '交换语言',
             icon: Icons.swap_vert_rounded,

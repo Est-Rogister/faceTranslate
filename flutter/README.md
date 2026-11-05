@@ -4,12 +4,12 @@ Android 面对面实时翻译应用，使用 Flutter 和 Dart 开发。语音翻
 
 ## 本地配置
 
-应用可在语言选择页右上角的“翻译服务设置”中输入 API Key，并选择北京专属节点、北京公共节点或自定义实时 WebSocket 地址。配置会加密保存在当前 Android 设备。
+应用可在语言选择页右上角的“翻译服务设置”中输入 API Key、自定义实时 WebSocket 地址、翻译超时时间，并选择是否启用音色复刻。API Key 和地址默认均为空，超时时间默认为 20 秒，配置会保存在当前 Android 设备。
 
 开发时也可以使用编译期默认配置：
 
 1. 复制 `config.example.json` 为 `config.local.json`。
-2. 填入 API Key 和业务空间 ID。
+2. 填入 API Key 和实时 WebSocket 地址。
 3. 通过 USB 真机运行：
 
 ```bash

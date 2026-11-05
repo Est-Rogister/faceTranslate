@@ -38,6 +38,24 @@ void main() {
     expect(error, isNull);
   });
 
+  test('leaves the realtime WebSocket endpoint empty by default', () {
+    final settings = LiveTranslateSettings(store: _MemorySettingsStore());
+
+    expect(settings.customEndpoint, isEmpty);
+    expect(settings.endpoint, isNull);
+    expect(settings.translationTimeoutSeconds, 20);
+    expect(settings.recordingButtonMode, RecordingButtonMode.tap);
+    expect(settings.isConfigured, isFalse);
+  });
+
+  test('validates the configurable translation timeout range', () {
+    expect(LiveTranslateSettings.validateTranslationTimeout('5'), isNull);
+    expect(LiveTranslateSettings.validateTranslationTimeout('120'), isNull);
+    expect(LiveTranslateSettings.validateTranslationTimeout('4'), isNotNull);
+    expect(LiveTranslateSettings.validateTranslationTimeout('121'), isNotNull);
+    expect(LiveTranslateSettings.validateTranslationTimeout(''), isNotNull);
+  });
+
   testWidgets('starts on language setup and opens the permission dialog', (
     tester,
   ) async {
@@ -87,10 +105,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     final microphone = find.byKey(const ValueKey('microphone-b'));
-    final gesture = await tester.startGesture(tester.getCenter(microphone));
+    await tester.tap(microphone);
     await tester.pump(const Duration(milliseconds: 1100));
     expect(find.textContaining('正在录音'), findsOneWidget);
-    await gesture.up();
+    await tester.tap(microphone);
     await tester.pump();
 
     expect(find.text('Playing translation'), findsOneWidget);
@@ -117,15 +135,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     final microphone = find.byKey(const ValueKey('microphone-a'));
-    var gesture = await tester.startGesture(tester.getCenter(microphone));
+    await tester.tap(microphone);
     await tester.pump(const Duration(milliseconds: 1100));
-    await gesture.up();
+    await tester.tap(microphone);
     await tester.pump();
     expect(createdClients, 1);
 
-    gesture = await tester.startGesture(tester.getCenter(microphone));
+    await tester.tap(microphone);
     await tester.pump(const Duration(milliseconds: 1100));
-    await gesture.up();
+    await tester.tap(microphone);
     await tester.pump();
     expect(createdClients, 1);
   });
@@ -141,6 +159,8 @@ void main() {
 
     expect(find.text('API Key'), findsOneWidget);
     expect(find.text('实时 WebSocket 地址'), findsOneWidget);
+    expect(find.text('翻译超时时间'), findsOneWidget);
+    expect(find.text('麦克风按钮模式'), findsOneWidget);
     expect(find.text('复刻说话人音色'), findsOneWidget);
 
     await tester.enterText(
@@ -151,12 +171,46 @@ void main() {
       find.byKey(const ValueKey('custom-endpoint-field')),
       'wss://custom.example.com/api-ws/v1/realtime',
     );
+    await tester.enterText(
+      find.byKey(const ValueKey('translation-timeout-field')),
+      '12',
+    );
+    await tester.tap(find.text('按住说话'));
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
     expect(settings.apiKey, 'sk-test-key');
     expect(settings.endpoint?.host, 'custom.example.com');
+    expect(settings.translationTimeoutSeconds, 12);
+    expect(settings.recordingButtonMode, RecordingButtonMode.hold);
     expect(settings.voiceCloneEnabled, isTrue);
+  });
+
+  testWidgets('hold mode records while pressed and translates on release', (
+    tester,
+  ) async {
+    final settings = LiveTranslateSettings(store: _MemorySettingsStore());
+    await settings.save(
+      apiKey: 'sk-test-key',
+      customEndpoint: 'wss://custom.example.com/api-ws/v1/realtime',
+      voiceCloneEnabled: true,
+      translationTimeoutSeconds: 20,
+      recordingButtonMode: RecordingButtonMode.hold,
+    );
+    await tester.pumpWidget(_buildTestApp(settings: settings));
+    await tester.tap(find.text('开始对话'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('允许'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final microphone = find.byKey(const ValueKey('microphone-a'));
+    final gesture = await tester.startGesture(tester.getCenter(microphone));
+    await tester.pump(const Duration(milliseconds: 1100));
+    expect(find.textContaining('正在录音'), findsOneWidget);
+    await gesture.up();
+    await tester.pump();
+
+    expect(find.text('Playing translation'), findsOneWidget);
   });
 
   testWidgets('selecting the other side language swaps both sides', (
@@ -234,9 +288,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     final microphone = find.byKey(const ValueKey('microphone-b'));
-    final gesture = await tester.startGesture(tester.getCenter(microphone));
+    await tester.tap(microphone);
     await tester.pump(const Duration(milliseconds: 1100));
-    await gesture.up();
+    await tester.tap(microphone);
     await tester.pump();
 
     expect(historyStore.snapshot.messagesA, hasLength(1));

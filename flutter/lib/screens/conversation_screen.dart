@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../models.dart';
 import '../services/live_translate_service.dart';
+import '../services/live_translate_settings.dart';
 
 enum _ConversationStatus {
   waiting,
@@ -28,6 +29,7 @@ class ConversationScreen extends StatefulWidget {
     required this.onEditLanguages,
     required this.onMessage,
     required this.onClearMessages,
+    required this.recordingButtonMode,
     this.translationClientFactory,
     this.audioPlayerFactory,
     super.key,
@@ -42,6 +44,7 @@ class ConversationScreen extends StatefulWidget {
   final VoidCallback onEditLanguages;
   final void Function(PartySide target, TranscriptMessage message) onMessage;
   final VoidCallback onClearMessages;
+  final RecordingButtonMode recordingButtonMode;
   final TranslationClientFactory? translationClientFactory;
   final TranslationAudioPlayerFactory? audioPlayerFactory;
 
@@ -185,7 +188,7 @@ class _ConversationScreenState extends State<ConversationScreen>
         _status = _ConversationStatus.error;
         _statusText = '翻译服务未配置';
       });
-      _showToast('请配置阿里云 API Key 和 Workspace ID');
+      _showToast('请配置阿里云 API Key 和实时 WebSocket 地址');
       _returnToWaiting();
       return;
     }
@@ -205,7 +208,7 @@ class _ConversationScreenState extends State<ConversationScreen>
       _liveSourceText = '';
       _liveTranslationText = '';
       _status = _ConversationStatus.recording;
-      _statusText = '正在录音 00:00';
+      _statusText = _recordingStatusText(Duration.zero);
     });
     unawaited(_startTranslation(client, side));
 
@@ -215,12 +218,41 @@ class _ConversationScreenState extends State<ConversationScreen>
       if (_cancelArmed) return;
       final seconds = _recordingElapsed.inSeconds.clamp(0, 60);
       setState(() {
-        _statusText = '正在录音 00:${seconds.toString().padLeft(2, '0')}';
+        _statusText = _recordingStatusText(Duration(seconds: seconds));
       });
     });
     _limitTimer = Timer(const Duration(seconds: 60), () {
       if (_recordingSide == side) _finishRecording(side, reachedLimit: true);
     });
+  }
+
+  String _recordingStatusText(Duration elapsed) {
+    final seconds = elapsed.inSeconds.clamp(0, 60);
+    final time = '00:${seconds.toString().padLeft(2, '0')}';
+    return widget.recordingButtonMode == RecordingButtonMode.tap
+        ? '正在录音 $time · 再次点击结束'
+        : '正在录音 $time';
+  }
+
+  void _handlePointerDown(PartySide side, PointerDownEvent event) {
+    if (widget.recordingButtonMode == RecordingButtonMode.tap &&
+        _recordingSide == side) {
+      _finishRecording(side);
+      return;
+    }
+    _beginRecording(side, event);
+  }
+
+  void _handlePointerMove(PartySide side, PointerMoveEvent event) {
+    if (widget.recordingButtonMode == RecordingButtonMode.hold) {
+      _trackRecording(side, event);
+    }
+  }
+
+  void _handlePointerEnd(PartySide side, PointerEvent event) {
+    if (widget.recordingButtonMode == RecordingButtonMode.hold) {
+      _endRecording(side, event);
+    }
   }
 
   Future<void> _startTranslation(
@@ -325,7 +357,11 @@ class _ConversationScreenState extends State<ConversationScreen>
         _status = _ConversationStatus.warning;
         _statusText = '说话时间太短，请重试';
       });
-      _showToast('至少按住 1 秒再松开');
+      _showToast(
+        widget.recordingButtonMode == RecordingButtonMode.tap
+            ? '至少录音 1 秒再点击结束'
+            : '至少按住 1 秒再松开',
+      );
       _returnToWaiting();
       return;
     }
@@ -576,12 +612,13 @@ class _ConversationScreenState extends State<ConversationScreen>
                       statusColor: _statusColor(context),
                       onLanguageChanged: (language) =>
                           _selectLanguage(PartySide.a, language),
+                      recordingButtonMode: widget.recordingButtonMode,
                       onPointerDown: (event) =>
-                          _beginRecording(PartySide.a, event),
+                          _handlePointerDown(PartySide.a, event),
                       onPointerMove: (event) =>
-                          _trackRecording(PartySide.a, event),
+                          _handlePointerMove(PartySide.a, event),
                       onPointerEnd: (event) =>
-                          _endRecording(PartySide.a, event),
+                          _handlePointerEnd(PartySide.a, event),
                     ),
                   ),
                 ),
@@ -610,13 +647,15 @@ class _ConversationScreenState extends State<ConversationScreen>
                     statusText: _localizedStatus(PartySide.b),
                     status: _status,
                     statusColor: _statusColor(context),
+                    recordingButtonMode: widget.recordingButtonMode,
                     onLanguageChanged: (language) =>
                         _selectLanguage(PartySide.b, language),
                     onPointerDown: (event) =>
-                        _beginRecording(PartySide.b, event),
+                        _handlePointerDown(PartySide.b, event),
                     onPointerMove: (event) =>
-                        _trackRecording(PartySide.b, event),
-                    onPointerEnd: (event) => _endRecording(PartySide.b, event),
+                        _handlePointerMove(PartySide.b, event),
+                    onPointerEnd: (event) =>
+                        _handlePointerEnd(PartySide.b, event),
                   ),
                 ),
               ],
@@ -644,6 +683,7 @@ class _PartyPanel extends StatelessWidget {
     required this.statusText,
     required this.status,
     required this.statusColor,
+    required this.recordingButtonMode,
     required this.onLanguageChanged,
     required this.onPointerDown,
     required this.onPointerMove,
@@ -664,6 +704,7 @@ class _PartyPanel extends StatelessWidget {
   final String statusText;
   final _ConversationStatus status;
   final Color statusColor;
+  final RecordingButtonMode recordingButtonMode;
   final ValueChanged<LanguageOption> onLanguageChanged;
   final PointerDownEventListener onPointerDown;
   final PointerMoveEventListener onPointerMove;
@@ -684,6 +725,7 @@ class _PartyPanel extends StatelessWidget {
       conflicted: conflicted,
       disabled: disabled,
       motion: motion,
+      recordingButtonMode: recordingButtonMode,
       onPointerDown: onPointerDown,
       onPointerMove: onPointerMove,
       onPointerEnd: onPointerEnd,
@@ -924,6 +966,7 @@ class _MicrophoneButton extends StatelessWidget {
     required this.conflicted,
     required this.disabled,
     required this.motion,
+    required this.recordingButtonMode,
     required this.onPointerDown,
     required this.onPointerMove,
     required this.onPointerEnd,
@@ -936,6 +979,7 @@ class _MicrophoneButton extends StatelessWidget {
   final bool conflicted;
   final bool disabled;
   final Animation<double> motion;
+  final RecordingButtonMode recordingButtonMode;
   final PointerDownEventListener onPointerDown;
   final PointerMoveEventListener onPointerMove;
   final void Function(PointerEvent event) onPointerEnd;
@@ -981,7 +1025,9 @@ class _MicrophoneButton extends StatelessWidget {
                 onPointerCancel: disabled ? null : onPointerEnd,
                 child: Semantics(
                   button: true,
-                  label: '按住说话',
+                  label: recordingButtonMode == RecordingButtonMode.tap
+                      ? '点击开始或结束录音'
+                      : '按住说话',
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     width: 68,

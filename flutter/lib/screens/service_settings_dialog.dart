@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/live_translate_settings.dart';
 
@@ -23,7 +24,9 @@ class _ServiceSettingsDialogState extends State<_ServiceSettingsDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _apiKeyController;
   late final TextEditingController _customEndpointController;
+  late final TextEditingController _translationTimeoutController;
   late bool _voiceCloneEnabled;
+  late RecordingButtonMode _recordingButtonMode;
   bool _obscureApiKey = true;
   bool _saving = false;
 
@@ -34,13 +37,18 @@ class _ServiceSettingsDialogState extends State<_ServiceSettingsDialog> {
     _customEndpointController = TextEditingController(
       text: widget.settings.customEndpoint,
     );
+    _translationTimeoutController = TextEditingController(
+      text: widget.settings.translationTimeoutSeconds.toString(),
+    );
     _voiceCloneEnabled = widget.settings.voiceCloneEnabled;
+    _recordingButtonMode = widget.settings.recordingButtonMode;
   }
 
   @override
   void dispose() {
     _apiKeyController.dispose();
     _customEndpointController.dispose();
+    _translationTimeoutController.dispose();
     super.dispose();
   }
 
@@ -52,6 +60,10 @@ class _ServiceSettingsDialogState extends State<_ServiceSettingsDialog> {
         apiKey: _apiKeyController.text,
         customEndpoint: _customEndpointController.text,
         voiceCloneEnabled: _voiceCloneEnabled,
+        translationTimeoutSeconds: int.parse(
+          _translationTimeoutController.text,
+        ),
+        recordingButtonMode: _recordingButtonMode,
       );
       if (mounted) Navigator.pop(context, true);
     } on FormatException catch (error) {
@@ -143,6 +155,50 @@ class _ServiceSettingsDialogState extends State<_ServiceSettingsDialog> {
                   ),
                   validator: (value) =>
                       LiveTranslateSettings.validateEndpoint(value ?? ''),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  key: const ValueKey('translation-timeout-field'),
+                  controller: _translationTimeoutController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    labelText: '翻译超时时间',
+                    hintText: '20',
+                    suffixText: '秒',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.timer_outlined),
+                  ),
+                  validator: (value) =>
+                      LiveTranslateSettings.validateTranslationTimeout(
+                        value ?? '',
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text('麦克风按钮模式', style: theme.textTheme.titleSmall),
+                const SizedBox(height: 8),
+                SegmentedButton<RecordingButtonMode>(
+                  key: const ValueKey('recording-button-mode'),
+                  segments: const [
+                    ButtonSegment(
+                      value: RecordingButtonMode.tap,
+                      icon: Icon(Icons.touch_app_rounded),
+                      label: Text('点击启停'),
+                    ),
+                    ButtonSegment(
+                      value: RecordingButtonMode.hold,
+                      icon: Icon(Icons.pan_tool_alt_rounded),
+                      label: Text('按住说话'),
+                    ),
+                  ],
+                  selected: {_recordingButtonMode},
+                  onSelectionChanged: _saving
+                      ? null
+                      : (selection) {
+                          setState(() {
+                            _recordingButtonMode = selection.single;
+                          });
+                        },
                 ),
                 const SizedBox(height: 8),
                 SwitchListTile(

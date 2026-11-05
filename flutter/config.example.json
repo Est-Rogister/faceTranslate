@@ -1,5 +1,4 @@
 {
   "ALIYUN_DASHSCOPE_API_KEY": "sk-your-api-key",
-  "ALIYUN_DASHSCOPE_WORKSPACE_ID": "your-workspace-id",
-  "ALIYUN_DASHSCOPE_REGION": "cn-beijing"
+  "ALIYUN_DASHSCOPE_ENDPOINT": ""
 }

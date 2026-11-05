@@ -266,6 +266,7 @@ class _HomeShellState extends State<HomeShell> {
                     setState(() => _showConversation = false),
                 onMessage: _addMessage,
                 onClearMessages: _clearMessages,
+                recordingButtonMode: _settings.recordingButtonMode,
                 translationClientFactory: widget.translationClientFactory,
                 audioPlayerFactory: widget.audioPlayerFactory,
               )

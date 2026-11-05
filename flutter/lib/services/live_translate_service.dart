@@ -55,6 +55,9 @@ abstract final class LiveTranslateConfig {
   static Uri? get endpoint => LiveTranslateSettings.instance.endpoint;
   static bool get voiceCloneEnabled =>
       LiveTranslateSettings.instance.voiceCloneEnabled;
+  static Duration get translationTimeout => Duration(
+    seconds: LiveTranslateSettings.instance.translationTimeoutSeconds,
+  );
 }
 
 Map<String, dynamic> buildLiveTranslateSessionUpdate({
@@ -158,7 +161,7 @@ class QwenLiveTranslateClient implements TranslationClient {
 
   Future<void> _startTurn({required String targetLanguage}) async {
     if (!isConfigured) {
-      throw const LiveTranslateException('缺少阿里云 API Key 或 Workspace ID');
+      throw const LiveTranslateException('缺少阿里云 API Key 或实时 WebSocket 地址');
     }
 
     try {
@@ -265,8 +268,10 @@ class QwenLiveTranslateClient implements TranslationClient {
         _scheduleTurnCompletion();
       }
       return await result.future.timeout(
-        const Duration(seconds: 45),
-        onTimeout: () => throw const LiveTranslateException('翻译响应超时'),
+        LiveTranslateConfig.translationTimeout,
+        onTimeout: () => throw LiveTranslateException(
+          '翻译响应超时（${LiveTranslateSettings.instance.translationTimeoutSeconds} 秒）',
+        ),
       );
     } finally {
       _recordingStartOperation = null;

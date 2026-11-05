@@ -4,7 +4,6 @@
 *.pyc
 *.swp
 .DS_Store
-/.metadata
 .atom/
 .build/
 .buildlog/
@@ -29,10 +28,12 @@ migrate_working_dir/
 **/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins-dependencies
+config.local.json
 .pub-cache/
 .pub/
 /build/
 /coverage/
+/dist/
 
 # Symbolication related
 app.*.symbols
